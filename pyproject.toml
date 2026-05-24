@@ -1,0 +1,5 @@
+[project]
+name = "connect4-sieciowe"
+version = "0.1.0"
+description = "Projekt gry Connect 4 z interfejsem graficznym i trybem sieciowym."
+requires-python = ">=3.9"
