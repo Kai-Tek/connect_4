@@ -9,10 +9,10 @@ from connect4.gui_network_client import GuiNetworkClient
 from network_server import Connect4Server, PORT
 
 
-CELL_SIZE = 86
-BOARD_PADDING = 20
-DROP_ZONE_HEIGHT = 92
-DISC_MARGIN = 8
+CELL_SIZE = 68
+BOARD_PADDING = 14
+DROP_ZONE_HEIGHT = 74
+DISC_MARGIN = 7
 BOARD_COLOR = "#2563eb"
 EMPTY_COLOR = "#f8fafc"
 BACKGROUND_COLOR = "#e2e8f0"
@@ -30,6 +30,7 @@ class Connect4Gui:
         self.network_client: Optional[GuiNetworkClient] = None
         self.network_player_number: Optional[int] = None
         self.network_waiting = False
+        self.connection_in_progress = False
         self.server_started = False
         self.dragging_disc = False
         self.drag_x = 0
@@ -128,14 +129,14 @@ class Connect4Gui:
         self.host_entry.insert(0, "127.0.0.1")
         self.host_entry.pack(pady=(4, 16))
 
-        connect_button = tk.Button(
+        self.connect_button = tk.Button(
             self.join_frame,
             text="Polacz",
             font=("Segoe UI", 13),
             width=22,
             command=self.join_network_game,
         )
-        connect_button.pack(pady=6)
+        self.connect_button.pack(pady=6)
 
         back_button = tk.Button(
             self.join_frame,
@@ -219,7 +220,7 @@ class Connect4Gui:
 
     def host_network_game(self) -> None:
         self.start_server_if_needed()
-        self.connect_to_network_game("127.0.0.1")
+        self.connect_to_network_game("127.0.0.1", retry_count=10)
 
     def join_network_game(self) -> None:
         host = self.host_entry.get().strip()
@@ -227,7 +228,7 @@ class Connect4Gui:
             messagebox.showwarning("Brak adresu", "Wpisz adres IP serwera.")
             return
 
-        self.connect_to_network_game(host)
+        self.connect_to_network_game(host, retry_count=1)
 
     def start_server_if_needed(self) -> None:
         if self.server_started:
@@ -238,14 +239,19 @@ class Connect4Gui:
         thread.start()
         self.server_started = True
 
-    def connect_to_network_game(self, host: str) -> None:
+    def connect_to_network_game(self, host: str, retry_count: int) -> None:
+        if self.connection_in_progress:
+            return
+
         self.disconnect_from_network()
+        self.connection_in_progress = True
         self.mode = "network"
         self.network_player_number = None
         self.network_waiting = True
         self.game.reset()
         self.draw_board()
         self.status_label.config(text="Laczenie z serwerem...")
+        self.connect_button.config(state=tk.DISABLED)
 
         client = GuiNetworkClient(
             host,
@@ -254,29 +260,47 @@ class Connect4Gui:
             on_disconnect=lambda: self.root.after(0, self.handle_network_disconnect),
         )
 
+        thread = threading.Thread(
+            target=self.connect_to_network_game_in_background,
+            args=(client, retry_count),
+            daemon=True,
+        )
+        thread.start()
+
+    def connect_to_network_game_in_background(
+        self, client: GuiNetworkClient, retry_count: int
+    ) -> None:
         last_error = None
-        for _ in range(10):
+        for _ in range(retry_count):
             try:
                 client.connect()
-                last_error = None
-                break
+                self.root.after(0, self.handle_network_connect_success, client)
+                return
             except OSError as error:
                 last_error = error
                 time.sleep(0.1)
 
-        if last_error is not None:
-            self.mode = "local"
-            messagebox.showerror(
-                "Blad polaczenia",
-                f"Nie udalo sie polaczyc z serwerem:\n{last_error}",
-            )
-            return
+        self.root.after(0, self.handle_network_connect_error, last_error)
 
+    def handle_network_connect_success(self, client: GuiNetworkClient) -> None:
+        self.connection_in_progress = False
         self.network_client = client
+        self.connect_button.config(state=tk.NORMAL)
         self.reset_button.config(state=tk.DISABLED)
         self.menu_frame.pack_forget()
         self.join_frame.pack_forget()
         self.game_frame.pack()
+
+    def handle_network_connect_error(self, error: Optional[OSError]) -> None:
+        self.connection_in_progress = False
+        self.mode = "local"
+        self.network_waiting = False
+        self.connect_button.config(state=tk.NORMAL)
+        self.status_label.config(text="Tura gracza 1")
+        messagebox.showerror(
+            "Blad polaczenia",
+            f"Nie udalo sie polaczyc z serwerem:\n{error}",
+        )
 
     def handle_mouse_down(self, event: tk.Event) -> None:
         if self.game.status != GameStatus.IN_PROGRESS:

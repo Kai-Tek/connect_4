@@ -16,17 +16,19 @@ class GuiNetworkClient:
         port: int,
         on_message: MessageHandler,
         on_disconnect: DisconnectHandler,
+        connect_timeout: float = 3,
     ) -> None:
         self.host = host
         self.port = port
         self.on_message = on_message
         self.on_disconnect = on_disconnect
+        self.connect_timeout = connect_timeout
         self.socket: Optional[socket.socket] = None
         self.socket_file = None
         self.running = False
 
     def connect(self) -> None:
-        self.socket = socket.create_connection((self.host, self.port), timeout=5)
+        self.socket = socket.create_connection((self.host, self.port), timeout=self.connect_timeout)
         self.socket.settimeout(None)
         self.socket_file = self.socket.makefile("rwb")
         self.running = True
