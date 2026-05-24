@@ -397,7 +397,7 @@ class Connect4Gui:
 
         self.canvas.create_text(
             BOARD_PADDING,
-            18,
+            9,
             text="Przeciagnij pionek nad kolumne albo kliknij kolumne",
             anchor="w",
             fill="#334155",
